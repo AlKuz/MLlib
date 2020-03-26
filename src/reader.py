@@ -1,8 +1,10 @@
 import pandas as pd
+import numpy as np
 import os
 from copy import deepcopy
 from abc import ABC, abstractmethod
 from typing import Optional, List, Callable, Iterator, Any
+import matplotlib.image as mpimg
 
 
 class Reader(ABC):
@@ -10,9 +12,11 @@ class Reader(ABC):
     def __init__(self, folder: str,
                  file_filter: Optional[Callable] = None,
                  sorted_key: Optional[Callable] = None,
+                 concatenate_method: Optional[Callable] = None,
                  batch_size: int = -1):
         assert batch_size > 0 or batch_size == -1, f"Batch size should be > 0 or == -1, received {batch_size}"
         self.__files = sorted(self.__get_files_paths(folder, file_filter), key=sorted_key)
+        self.__concatenate_method = lambda x: x if concatenate_method is None else concatenate_method
         self.__batch_size = batch_size
         self.__batch = []
 
@@ -45,7 +49,7 @@ class Reader(ABC):
             return data
         elif len(self.__batch) == self.__batch_size:
             result, self.__batch = self.__batch, []
-            return result
+            return self.__concatenate_method(result)
         else:
             self.__batch.append(data)
 
@@ -59,9 +63,10 @@ class TimeSeriesCSVReader(Reader):
     def __init__(self, folder: str,
                  file_filter: Optional[Callable] = None,
                  sorted_key: Optional[Callable] = None,
+                 concatenate_method: Optional[Callable] = None,
                  batch_size: int = -1,
                  chunk_size: int = 10000):
-        super().__init__(folder, file_filter, sorted_key, batch_size)
+        super().__init__(folder, file_filter, sorted_key, concatenate_method, batch_size)
         self._chunk_size = chunk_size
 
     def _create_iterator(self, files_paths: List[str]) -> Iterator[dict]:
@@ -70,21 +75,31 @@ class TimeSeriesCSVReader(Reader):
         Returns:
             Iterator[dict]
         """
-        for file_path in files_paths:
-            for data in pd.read_csv(file_path, error_bad_lines=False, chunksize=self._chunk_size):
+        for path in files_paths:
+            for data in pd.read_csv(path, error_bad_lines=False, chunksize=self._chunk_size):
                 for d in data.iterrows():
                     yield d[1].to_dict()
 
 
+class ImageReader(Reader):
 
+    def __init__(self, folder: str,
+                 file_filter: Optional[Callable] = None,
+                 sorted_key: Optional[Callable] = None,
+                 concatenate_method: Optional[Callable] = None,
+                 batch_size: int = -1):
+        super().__init__(folder, file_filter, sorted_key, concatenate_method, batch_size)
+
+    def _create_iterator(self, files_paths: List[str]) -> Iterator[np.ndarray]:
+        for path in files_paths:
+            yield mpimg.imread(path)
 
 
 if __name__ == "__main__":
     FOLDER = r"C:\Projects\Customers\ConocoFillips\data\raw\crosslines"
-    reader = TimeSeriesCSVReader(
-        folder=FOLDER,
-        file_filter=lambda x: "log" in x.split("_")
+    reader = ImageReader(
+        folder=FOLDER
     )
 
     for r in reader:
-        print(r)
+        print(r.shape)
