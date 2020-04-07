@@ -77,7 +77,7 @@ class Reader(ABC):
 
     @abstractmethod
     def _create_iterator(self, files_paths: List[str]) -> Iterator:
-        raise NotImplemented
+        raise NotImplementedError
 
 
 class CSVReader(Reader):

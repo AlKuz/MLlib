@@ -1,18 +1,15 @@
 import pandas as pd
-import numpy as np
 import os
 from abc import ABC, abstractmethod
 from datetime import timedelta, datetime
 from typing import Dict, Iterable, Union, List, Iterator, Any, Optional, Callable
-import imgaug as ia
-import imgaug.augmenters as iaa
 
 from multiprocessing import Pool
 
 
 class Converter(ABC):
 
-    def __init__(self, workers: int = 0):
+    def __init__(self, workers: int = 0, ordered: bool = True):
         """
         Class initialisation
 
@@ -23,11 +20,15 @@ class Converter(ABC):
                 if > 0: use specified number of workers
         """
         self._workers = workers if workers >= 0 else os.cpu_count()
+        self._ordered = ordered
         self._map = map if self._workers == 0 else self._pool_map
 
     def _pool_map(self, func, iterable):
         """It does not work if call outside the method"""
-        return Pool(self._workers).imap_unordered(func, iterable)
+        if self._ordered:
+            return Pool(self._workers).imap(func, iterable)
+        else:
+            return Pool(self._workers).imap_unordered(func, iterable)
 
     @abstractmethod
     def __call__(self, data: Iterable[Any]) -> Iterable[Any]:
@@ -40,7 +41,7 @@ class Converter(ABC):
         Returns:
             Iterable[Any]: Processed batch
         """
-        raise NotImplemented
+        raise NotImplementedError
 
     def create_iterator(self, data: Iterable[Iterable[Any]]) -> Iterator[Iterable[Any]]:
         """
@@ -57,10 +58,13 @@ class Converter(ABC):
 
 class ApplyConverter(Converter):
 
-    def __init__(self, func: Callable[[Iterable[Any]], Iterable[Any]],
-                 workers: int = 0):
-        super().__init__(workers)
-        self.__call__ = func
+    def __init__(self, func: Callable,
+                 workers: int = 0, ordered: bool = True):
+        super().__init__(workers, ordered)
+        self._func = func
+
+    def __call__(self, data: Iterable[Any]) -> Iterable[Any]:
+        return self._func(data)
 
 
 class DataConverter(Converter):
@@ -69,7 +73,8 @@ class DataConverter(Converter):
                  transform_columns: Optional[Dict[str, Callable]] = None,
                  add_columns: Optional[Dict[str, Callable]] = None,
                  column_types: Optional[dict] = None,
-                 workers=0):
+                 workers=0,
+                 ordered: bool = True):
         """
         Initialization of data converter
 
@@ -82,7 +87,7 @@ class DataConverter(Converter):
         :param workers:
         """
 
-        super().__init__(workers)
+        super().__init__(workers, ordered)
         self._transform_columns = transform_columns if transform_columns is not None else dict()
         self._add_columns = add_columns if add_columns is not None else dict()
         self._keep_columns = set(keep_columns + list(self._transform_columns.keys()) + list(self._add_columns.keys()))\
@@ -181,9 +186,10 @@ class AggregationConverter(Converter):
                  timestamp_column,
                  aggregations: Dict[str, List[str]],
                  time_delays: List[timedelta],
-                 workers: int = 0):
+                 workers: int = 0,
+                 ordered: bool = True):
 
-        super().__init__(workers)
+        super().__init__(workers, ordered)
         self._aggregations = aggregations
         self._keep_columns = keep_columns
         self._timestamp_column = timestamp_column
