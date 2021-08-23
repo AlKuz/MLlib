@@ -4,8 +4,67 @@ import os
 import random
 from copy import deepcopy
 from abc import ABC, abstractmethod
-from typing import Optional, List, Callable, Iterator, Union, Any
-import matplotlib.image as mpimg
+from typing import Optional, List, Callable, Iterator, Union
+import matplotlib.image as mp_img
+
+
+class AbstractReader(ABC):
+
+    @abstractmethod
+    def __len__(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def __iter__(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def __getitem__(self, item):
+        raise NotImplementedError
+
+
+class BaseReader(AbstractReader):
+
+    def __init__(self,
+                 path: Union[str, List[str]],
+                 file_filter: Optional[Callable[[str], bool]] = None,
+                 is_shuffle: bool = False,
+                 is_endless: bool = False,
+                 chunk_size: int = 1):
+        file_filter = (lambda x: True) if file_filter is None else file_filter
+        path = path if isinstance(path, list) else [path]
+        self._paths = self._get_paths(path, file_filter)
+        self._is_shuffle = is_shuffle
+        self._is_endless = is_endless
+        self._chunk_size = chunk_size
+
+    @staticmethod
+    def _get_paths(paths_list: List[str], file_filter: Callable[[str], bool]) -> List[str]:
+        results = []
+        for path in paths_list:
+            if os.path.isfile(path) and file_filter(path):
+                results.append(path)
+            elif os.path.isdir(path):
+                for root, _, files in os.walk(path):
+                    files = map(lambda f, r=root: os.path.join(r, f), files)
+                    files = filter(file_filter, files)
+                    results += list(files)
+        return results
+
+    @abstractmethod
+    def __len__(self):
+        raise NotImplementedError
+
+    def __iter__(self):
+        return self._create_iterator(self._paths)
+
+    @abstractmethod
+    def _create_iterator(self, files_paths: List[str]) -> Iterator:
+        raise NotImplementedError
+
+    @abstractmethod
+    def __getitem__(self, item):
+        raise NotImplementedError
 
 
 class Reader(ABC):
@@ -85,14 +144,15 @@ class CSVReader(Reader):
     def __init__(self, paths: str,
                  file_filter: Optional[Callable] = None,
                  chunk_size: int = 10000):
-
-        if callable(file_filter):
-            complex_filter = lambda x: file_filter(x) and x.split(".")[-1] == "csv"
-        else:
-            complex_filter = lambda x: x.split(".")[-1] == "csv"
-
-        super().__init__(paths, complex_filter)
+        super().__init__(paths, self._get_complex_filter(file_filter))
         self._chunk_size = chunk_size
+
+    @staticmethod
+    def _get_complex_filter(file_filter):
+        if callable(file_filter):
+            return lambda x: file_filter(x) and x.split(".")[-1] == "csv"
+        else:
+            return lambda x: x.split(".")[-1] == "csv"
 
     def _create_iterator(self, files_paths: List[str]) -> Iterator[dict]:
         """
@@ -110,25 +170,27 @@ class ImageReader(Reader):
 
     def __init__(self, paths: str,
                  file_filter: Optional[Callable] = None):
+        super().__init__(paths, self._get_complex_filter(file_filter))
 
+    @staticmethod
+    def _get_complex_filter(file_filter):
+        ext = {"jpg", "jpeg", "png", "tiff"}
         if callable(file_filter):
-            complex_filter = lambda x: file_filter(x) and x.split(".")[-1] in {"jpg", "jpeg", "png", "tiff"}
+            return lambda x: file_filter(x) and x.split(".")[-1] in ext
         else:
-            complex_filter = lambda x: x.split(".")[-1] in {"jpg", "jpeg", "png", "tiff"}
-
-        super().__init__(paths, complex_filter)
+            return lambda x: x.split(".")[-1] in ext
 
     def _create_iterator(self, files_paths: List[str]) -> Iterator[np.ndarray]:
         for path in files_paths:
-            yield mpimg.imread(path)
+            yield mp_img.imread(path)
 
 
 if __name__ == "__main__":
     DATA_PATH = r"C:\Projects\Customers\ConocoFillips\data\interim"
 
-    data = ImageReader(
+    img_data = ImageReader(
         paths=DATA_PATH,
         file_filter=lambda x: x.split(".")[-1] == "tiff"
     )
-    for i in data[:6]:
+    for i in img_data[:6]:
         print(i.shape)

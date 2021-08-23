@@ -36,7 +36,7 @@ class Converter(ABC):
         Iteration step of the converter
 
         Args:
-            data (Iterable[Any]): Batch of any data
+            data (Iterable[Any]): Batch of any artifacts
 
         Returns:
             Iterable[Any]: Processed batch
@@ -76,7 +76,7 @@ class DataConverter(Converter):
                  workers=0,
                  ordered: bool = True):
         """
-        Initialization of data converter
+        Initialization of artifacts converter
 
         Args:
             keep_columns (Optional[List[str]])
